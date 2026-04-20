@@ -10,7 +10,25 @@ class RLLibWrapper(gym.core.Wrapper, MultiAgentEnv):
     A RLLib wrapper so our env can inherit from MultiAgentEnv.
     """
 
-    pass
+    def __init__(self, env):
+        gym.core.Wrapper.__init__(self, env)
+
+    def reset(self):
+        return self.env.reset()
+
+    def step(self, action):
+        return self.env.step(action)
+
+    def render(self, mode="human"):
+        return self.env.render(mode=mode)
+
+    def close(self):
+        return self.env.close()
+
+    def seed(self, seed=None):
+        if hasattr(self.env, "seed"):
+            return self.env.seed(seed)
+        return None
 
 
 def create_rllib_env(env_config: dict = {}):
