@@ -30,7 +30,11 @@ def train_strategy(strategy_id: int, num_iterations: int = 500, num_workers: int
         num_workers: Number of parallel workers for data collection
     """
     
-    ray.init(ignore_reinit_error=True)
+    # Initialize Ray without dashboard (causes network issues on PACE)
+    ray.init(
+        ignore_reinit_error=True,
+        include_dashboard=False,
+    )
     
     # Register the shaped environment
     tune.registry.register_env("SoccerShaped", create_shaped_rllib_env)
@@ -47,6 +51,9 @@ def train_strategy(strategy_id: int, num_iterations: int = 500, num_workers: int
         "num_envs_per_worker": NUM_ENVS_PER_WORKER,
         "log_level": "INFO",
         "framework": "torch",
+        
+        # Disable Ray dashboard/metrics (causes network issues on PACE)
+        "_disable_preprocessor_api": True,
         
         # RL algorithm config
         "env": "SoccerShaped",
