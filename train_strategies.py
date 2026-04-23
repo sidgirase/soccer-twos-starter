@@ -17,7 +17,7 @@ from reward_shaping_env import create_shaped_rllib_env
 from reward_shaping import STRATEGY_DESCRIPTIONS
 
 
-NUM_ENVS_PER_WORKER = 4
+NUM_ENVS_PER_WORKER = 1
 
 
 def train_strategy(strategy_id: int, num_iterations: int = 500, num_workers: int = 8):
@@ -71,7 +71,7 @@ def train_strategy(strategy_id: int, num_iterations: int = 500, num_workers: int
         "clip_param": 0.2,
         "vf_clip_param": 0.2,
         "entropy_coeff": 0.01,
-        "train_batch_size": 4096,
+        "train_batch_size": 2048,  # Reduced from 4096 (1 env per worker)
         "sgd_minibatch_size": 128,
         "num_sgd_iter": 20,
     }
