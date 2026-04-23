@@ -1,5 +1,5 @@
 from random import uniform as randfloat
-
+import os
 import gym
 from ray.rllib import MultiAgentEnv
 import soccer_twos
@@ -39,14 +39,11 @@ def create_rllib_env(env_config: dict = {}):
             You may specify the following keys:
             - variation: one of soccer_twos.EnvType. Defaults to EnvType.multiagent_player.
             - opponent_policy: a Callable for your agent to train against. Defaults to a random policy.
-            - worker_index: Ray worker index (set automatically by Ray)
-            - vector_index: Environment vector index within worker
     """
-    # Assign unique worker_id if Ray provides worker_index
-    if "worker_index" in env_config:
-        worker_index = env_config.pop("worker_index")
-        vector_index = env_config.pop("vector_index", 0)
-        env_config["worker_id"] = worker_index * 10 + vector_index
+    # Generate unique worker_id based on process ID to avoid port conflicts
+    # Use modulo 100 to keep IDs in reasonable range (0-99)
+    worker_id = os.getpid() % 100
+    env_config['worker_id'] = worker_id
     
     env = soccer_twos.make(**env_config)
     # env = TransitionRecorderWrapper(env)

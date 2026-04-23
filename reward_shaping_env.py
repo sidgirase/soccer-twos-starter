@@ -125,20 +125,10 @@ def create_shaped_rllib_env(env_config: dict = {}):
     import soccer_twos
     from utils import RLLibWrapper, create_rllib_env
     
-    # Try to get worker index from Ray runtime context (for port conflict resolution)
-    try:
-        from ray import get_runtime_context
-        context = get_runtime_context()
-        if context and hasattr(context, 'worker_index') and context.worker_index is not None:
-            env_config["worker_index"] = context.worker_index
-            env_config["vector_index"] = getattr(context, 'vector_index', 0)
-    except (ImportError, AttributeError):
-        pass
-    
     # Extract strategy_id from config
     strategy_id = env_config.pop('strategy_id', 1)
     
-    # Create base environment
+    # Create base environment (worker_id is set inside create_rllib_env)
     base_env = create_rllib_env(env_config)
     
     # Apply reward shaping wrapper
