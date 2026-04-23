@@ -45,6 +45,65 @@ python example_ray_team_vs_random.py
 
 etc.
 
+## 🚀 Multi-Strategy Agent Training (Final Project)
+
+This project includes a comprehensive **5-strategy reward shaping approach** for training competitive soccer agents. See [PROJECT_GUIDE.md](PROJECT_GUIDE.md) for complete instructions.
+
+### Quick Start
+
+**Local training (testing)**:
+```bash
+python train_strategies.py --strategy 1 --workers 2
+```
+
+**PACE cluster training (recommended)**:
+```bash
+# See README_PACE_MULTITRAINING.md for detailed PACE instructions
+
+# Train a single strategy
+python train_strategies.py --strategy 1 --workers 8
+
+# Train all 5 strategies
+python train_strategies.py --all --workers 8
+```
+
+### The 5 Strategies
+
+| ID | Strategy | Focus | Best For |
+|---|----------|-------|----------|
+| 1 | Ball Possession | Close control, possession | Possession-based play |
+| 2 | Ball Interception | Aggressive defense | Defensive pressing |
+| 3 | Offensive Positioning | Attack/goal proximity | Scoring |
+| 4 | Defensive Blocking | Shot blocking | Defense/goalkeeping |
+| 5 | Coordinated Teamplay | Passes, team spacing | Overall performance ✓ |
+
+**Recommendation**: Start with Strategy 5, which combines team coordination with smart positioning.
+
+### Training On PACE
+
+```bash
+# Setup (first time only)
+cd ~/scratch
+git clone https://github.com/your-username/soccer-twos-starter.git
+cd soccer-twos-starter
+
+module load anaconda3/2023.03
+conda create --name soccertwos python=3.8 -y
+conda activate soccertwos
+
+pip install pip==23.3.2 setuptools==65.5.0 wheel==0.38.4
+pip cache purge
+pip install -r requirements.txt
+pip install protobuf==3.20.3 pydantic==1.10.13
+
+# Interactive training
+salloc -N 1 -c 32 --mem=64G -t 4:00:00 -p ice-cpu
+python train_strategies.py --strategy 5 --workers 8
+exit
+```
+
+See [README_PACE_MULTITRAINING.md](README_PACE_MULTITRAINING.md) for batch job submission and [ADVANCED_RL_TECHNIQUES.md](ADVANCED_RL_TECHNIQUES.md) for advanced improvements.
+
 ## Agent Packaging
 
 To receive full credit on the assignment and ensure the teaching staff can properly compile your code, you must follow these instructions:

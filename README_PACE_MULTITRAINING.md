@@ -326,6 +326,148 @@ chmod +x submit_all_experiments.sh
 
 ---
 
+## Training Multi-Strategy Agents (Final Project)
+
+This project implements **5 different reward shaping strategies** for training competitive soccer agents. Each strategy emphasizes different aspects of gameplay:
+
+### Strategy Descriptions
+
+1. **Ball Possession Focus** - Maintains possession, close ball control
+2. **Ball Interception Focus** - Aggressive defense, quick recovery  
+3. **Offensive Positioning** - Attacking moves, goal proximity
+4. **Defensive Blocking** - Shot blocking, defensive positioning
+5. **Coordinated Teamplay** - Passing, team spacing, support
+
+### Training Strategies on PACE (Interactive Session)
+
+For quicker testing and development:
+
+```bash
+# Request interactive session (important: adjust cores based on available resources)
+salloc -N 1 -c 32 --mem=64G -t 4:00:00 -p ice-cpu
+
+# Once allocated, load modules and activate environment
+module purge
+module load anaconda3/2023.03
+cd ~/scratch/soccer-twos-starter
+conda activate soccertwos
+
+# Train a single strategy (e.g., Strategy 1)
+python train_strategies.py --strategy 1 --workers 8
+
+# Or train all 5 strategies sequentially
+python train_strategies.py --all --workers 8
+
+# Wait for job to complete, then exit
+exit  # Exit compute node and return to login node
+```
+
+**Estimated time per strategy**: 2-4 hours (5M timesteps with 8 workers)
+
+### Training Strategies on PACE (Batch Jobs)
+
+For long-running training, submit batch jobs:
+
+```bash
+# Create a batch script for each strategy
+cat > train_strategy_1.sh <<'EOF'
+#!/bin/bash
+#SBATCH --job-name=soccer_strategy_1
+#SBATCH -N 1 -c 32
+#SBATCH --mem=64G
+#SBATCH -t 18:00:00
+#SBATCH -p ice-cpu
+#SBATCH -o logs/strategy_1_%j.out
+
+module purge
+module load anaconda3/2023.03
+
+cd ~/scratch/soccer-twos-starter
+conda activate soccertwos
+
+python train_strategies.py --strategy 1 --workers 8
+EOF
+
+# Create logs directory
+mkdir -p logs
+
+# Submit batch job
+sbatch train_strategy_1.sh
+
+# Check job status
+squeue -u <your_gatech_username>
+
+# Watch logs in real-time
+tail -f logs/strategy_1_<JOB_ID>.out
+```
+
+### Parallel Training of All 5 Strategies
+
+To train all strategies in parallel (requires separate resource allocations):
+
+```bash
+#!/bin/bash
+
+# Submit all 5 strategies as separate jobs
+for strategy in 1 2 3 4 5; do
+  cat > temp_strategy_job.sh <<EOF
+#!/bin/bash
+#SBATCH --job-name=soccer_strategy_$strategy
+#SBATCH -N 1 -c 32
+#SBATCH --mem=64G
+#SBATCH -t 18:00:00
+#SBATCH -p ice-cpu
+#SBATCH -o logs/strategy_${strategy}_%j.out
+
+module purge
+module load anaconda3/2023.03
+
+cd ~/scratch/soccer-twos-starter
+conda activate soccertwos
+
+python train_strategies.py --strategy $strategy --workers 8
+EOF
+
+  chmod +x temp_strategy_job.sh
+  sbatch temp_strategy_job.sh
+  sleep 2  # Small delay between submissions
+done
+
+rm temp_strategy_job.sh
+echo "All 5 strategy jobs submitted!"
+```
+
+### Monitoring Training Progress
+
+Ray Tune saves results to `ray_results/`. Monitor training with TensorBoard:
+
+```bash
+# On your allocated compute node
+cd ~/scratch/soccer-twos-starter
+
+# Start TensorBoard on port 6006
+tensorboard --logdir=ray_results/ --port=6006
+
+# On your local machine, forward the port:
+# ssh -L 6006:localhost:6006 <your_gatech_username>@login-ice.pace.gatech.edu
+# Then visit: http://localhost:6006
+```
+
+### Retrieving Results
+
+After training completes:
+
+```bash
+# Copy results to home directory (persistent storage)
+cp -r ~/scratch/soccer-twos-starter/ray_results/ ~/soccer_results_backup/
+
+# Or compress and download via Open OnDemand or SCP
+tar -czf soccer_results.tar.gz ray_results/
+scp <your_gatech_username>@login-ice.pace.gatech.edu:~/scratch/soccer-twos-starter/soccer_results.tar.gz ./
+```
+
+---
+
 ## Troubleshooting
 
 **Issue**: "No resources available"  
