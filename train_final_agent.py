@@ -35,7 +35,11 @@ parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
 args = parser.parse_args()
 
 def env_creator(env_config):
-    worker_id = getattr(env_config, "worker_index", 0) + 50
+    """Creates the environment with a unique worker_id to avoid port collisions."""
+    # Use a high base (1000) + the Ray worker index + a random shift from the PID
+    base_offset = 1000 + (os.getpid() % 100)
+    worker_id = getattr(env_config, "worker_index", 0) + base_offset
+    
     env = soccer_twos.make(
         render=env_config.get("render", False),
         time_scale=env_config.get("time_scale", 50),
