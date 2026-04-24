@@ -4,10 +4,13 @@ import random
 import time
 
 # ------------------------------------------------------------------
-# Disable Ray's memory monitor to prevent psutil.AccessDenied errors 
+# Disable Ray's memory monitor and dashboard to prevent PACE errors 
 # ------------------------------------------------------------------
 os.environ["RAY_DISABLE_MEMORY_MONITOR"] = "1"
 os.environ["RAY_IGNORE_UNHANDLED_ERRORS"] = "1"
+os.environ["RAY_DISABLE_METRICS_COLLECTION"] = "1"
+os.environ["RAY_DISABLE_REPORTER"] = "1"
+os.environ["RAY_DISABLE_DASHBOARD"] = "1"
 
 import gym
 import numpy as np
@@ -40,13 +43,13 @@ def env_creator(env_config):
     """Creates the environment with a robust retry loop to avoid PACE port collisions."""
     worker_index = getattr(env_config, "worker_index", 0)
     
-    # Try up to 20 times to find a free port
-    for attempt in range(20):
+    # Try up to 30 times to find a free port
+    for attempt in range(30):
         try:
-            # Unity uses base_port + worker_id (and multiplies it to reserve blocks).
-            # Keep worker_id small to avoid OverflowError, but shift it by 50 each attempt
-            # to bypass any zombie environments blocking the lower ports.
-            worker_id = worker_index + (attempt * 50)
+            # Unity uses base_port + worker_id. 
+            # A random range up to 10,000 gives us a massive pool of 9,900 ports to avoid collisions
+            # but is small enough that (5005 + 10000) is well below the 65535 TCP port limit!
+            worker_id = random.randint(100, 10000) + worker_index
             
             env = soccer_twos.make(
                 render=env_config.get("render", False),
@@ -59,16 +62,15 @@ def env_creator(env_config):
             error_msg = str(e).lower()
             # If the specific port is taken by a zombie or another user's job on this node
             if "in use" in error_msg or "address already in use" in error_msg:
-                print(f"[Attempt {attempt+1}/20] Worker {worker_index} port collision (worker_id={worker_id}). Retrying...")
-                # Sleep briefly with random jitter so multiple workers don't try to grab ports at the exact same millisecond
+                print(f"[Attempt {attempt+1}/30] Worker {worker_index} port collision (worker_id={worker_id}). Retrying...")
                 time.sleep(random.uniform(0.5, 2.0)) 
                 continue
             else:
                 # If it's a completely different error, raise it immediately
                 raise e
                 
-    # If we exit the loop, it means we failed 20 times in a row
-    raise RuntimeError(f"Failed to find an open port for Unity environment after 20 attempts for worker {worker_index}.")
+    # If we exit the loop, it means we failed 30 times in a row
+    raise RuntimeError(f"Failed to find an open port for Unity environment after 30 attempts for worker {worker_index}.")
 
 if __name__ == "__main__":
     ray.init(ignore_reinit_error=True)
@@ -106,7 +108,6 @@ if __name__ == "__main__":
         "lambda": args.gae_lambda,
     }
 
-    # This dynamically applies the timestamped name we generated in the batch script!
     experiment_name = args.name if args.name else f"PPO_Soccer_Final_{args.strategy}"
     print(f"Starting Training: {experiment_name} | Strategy: {args.strategy} | Workers: {args.workers}")
 
@@ -114,7 +115,7 @@ if __name__ == "__main__":
 
     tune.run(
         "PPO",
-        name=experiment_name,  # Ray Tune will create a brand new folder with this exact name!
+        name=experiment_name,
         stop={"training_iteration": args.iters},
         checkpoint_freq=50,
         checkpoint_at_end=True,
