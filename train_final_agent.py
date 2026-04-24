@@ -1,9 +1,9 @@
 import os
+import argparse
 
 # ------------------------------------------------------------------
-# BULLETPROOF WINDOWS FIX: 
+# BULLETPROOF WINDOWS/LINUX FIX: 
 # Disable Ray's memory monitor to prevent psutil.AccessDenied errors 
-# when it tries to inspect Windows system processes.
 # ------------------------------------------------------------------
 os.environ["RAY_DISABLE_MEMORY_MONITOR"] = "1"
 os.environ["RAY_IGNORE_UNHANDLED_ERRORS"] = "1"
@@ -18,53 +18,53 @@ import soccer_twos
 
 from reward_shaping_env import ShapedSoccerTwos
 
-# --- CONFIGURATION ---
-# Choose your strategy here: "offensive", "defensive", or "balanced"
-STRATEGY = "balanced" 
-EXPERIMENT_NAME = f"PPO_Soccer_Final_{STRATEGY}"
+# --- COMMAND LINE ARGUMENTS ---
+parser = argparse.ArgumentParser(description="Highly Configurable Soccer Twos Trainer")
+parser.add_argument("--strategy", type=str, default="balanced", choices=["offensive", "defensive", "balanced"], help="Reward shaping strategy")
+parser.add_argument("--workers", type=int, default=22, help="Number of CPU workers (Set to Total CPUs - 2)")
+parser.add_argument("--iters", type=int, default=2000, help="Total training iterations to reach")
+parser.add_argument("--restore", type=str, default=None, help="Absolute or relative path to a checkpoint to resume training")
+parser.add_argument("--name", type=str, default="", help="Custom name for the experiment folder")
+
+# Hyperparameters
+parser.add_argument("--entropy", type=float, default=0.01, help="Entropy coefficient (exploration vs exploitation)")
+parser.add_argument("--clip", type=float, default=0.2, help="PPO clip parameter")
+parser.add_argument("--vf-loss", type=float, default=1.0, help="Value function loss coefficient")
+parser.add_argument("--gae-lambda", type=float, default=0.95, help="GAE lambda smoothing parameter")
+parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
+
+args = parser.parse_args()
 
 def env_creator(env_config):
     """Creates the environment and wraps it with our custom reward shaping."""
-    # Using a guaranteed safe worker_id based on Ray's worker_index.
-    # Adding an offset (e.g., 50) completely bypasses any hanging zombie 
-    # Unity processes on default ports from previous crashed runs.
     worker_id = getattr(env_config, "worker_index", 0) + 50
-    
     env = soccer_twos.make(
         render=env_config.get("render", False),
         time_scale=env_config.get("time_scale", 50),
         worker_id=worker_id
     )
-    return ShapedSoccerTwos(env, strategy=STRATEGY)
+    return ShapedSoccerTwos(env, strategy=env_config.get("strategy", args.strategy))
 
 if __name__ == "__main__":
-    # Initialize Ray (Local or Cluster)
     ray.init(ignore_reinit_error=True)
-
-    # Register the custom environment
     register_env("ShapedSoccer", env_creator)
 
-    # ------------------------------------------------------------------
-    # BULLETPROOF FIX: Hardcode the gym spaces.
-    # This completely avoids creating a "dummy" Unity environment, 
-    # which is the #1 cause of port collisions and UnityWorkerInUseExceptions.
-    # ------------------------------------------------------------------
+    # Hardcoded spaces to prevent dummy env port collisions
     obs_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(336,), dtype=np.float32)
     act_space = gym.spaces.MultiDiscrete([3, 3, 3])
 
-    # Configure PPO (Self-Play configuration mapped to a single policy for stability)
     config = {
         "env": "ShapedSoccer",
         "env_config": {
             "render": False,
-            "time_scale": 50, # Speed up training simulation
+            "time_scale": 50,
+            "strategy": args.strategy,
         },
         "framework": "torch",
-        "num_workers": 7, # Adjust based on your PACE node (e.g., 4 or 8)
+        "num_workers": args.workers,
         "num_envs_per_worker": 1,
+        "num_gpus": 0, # Explicitly tell Ray NOT to look for a GPU
         "multiagent": {
-            # All 4 agents (2 teams of 2) map to the exact same policy.
-            # Provide the hardcoded spaces instead of None to fix the ValueError
             "policies": {"shared_policy": (None, obs_space, act_space, {})},
             "policy_mapping_fn": lambda agent_id, *args, **kwargs: "shared_policy",
         },
@@ -72,21 +72,28 @@ if __name__ == "__main__":
             "fcnet_hiddens": [256, 256],
             "fcnet_activation": "relu",
         },
-        "lr": 3e-4,
+        
+        # --- TUNABLE HYPERPARAMETERS ---
+        "lr": args.lr,
         "train_batch_size": 4000,
         "sgd_minibatch_size": 128,
         "num_sgd_iter": 10,
+        "entropy_coeff": args.entropy, 
+        "clip_param": args.clip, 
+        "vf_loss_coeff": args.vf_loss, 
+        "lambda": args.gae_lambda,
     }
 
-    print(f"Starting Training with {STRATEGY.upper()} strategy...")
+    experiment_name = args.name if args.name else f"PPO_Soccer_Final_{args.strategy}"
+    print(f"Starting Training: {experiment_name} | Workers: {args.workers} | Target Iters: {args.iters}")
 
-    # Run training using Ray Tune
     tune.run(
         "PPO",
-        name=EXPERIMENT_NAME,
-        stop={"training_iteration": 5000}, # Change this to 1000+ on PACE
+        name=experiment_name,
+        stop={"training_iteration": args.iters},
         checkpoint_freq=50,
         checkpoint_at_end=True,
         local_dir="./ray_results",
         config=config,
+        restore=args.restore # Will be None if not provided, safely starting from scratch
     )
