@@ -43,10 +43,10 @@ def env_creator(env_config):
     # Try up to 20 times to find a free port
     for attempt in range(20):
         try:
-            # Unity uses base_port + worker_id.
-            # Use a smaller random range (100 to 5000) to prevent OverflowError (port > 65535)
-            # while still providing enough randomness to avoid collisions on PACE.
-            worker_id = random.randint(100, 5000) + worker_index
+            # Unity uses base_port + worker_id (and multiplies it to reserve blocks).
+            # Keep worker_id small to avoid OverflowError, but shift it by 50 each attempt
+            # to bypass any zombie environments blocking the lower ports.
+            worker_id = worker_index + (attempt * 50)
             
             env = soccer_twos.make(
                 render=env_config.get("render", False),
