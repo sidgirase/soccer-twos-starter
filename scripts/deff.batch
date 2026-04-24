@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --job-name=soc_def_base
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=12        
+#SBATCH --mem=16G               
+#SBATCH --time=12:00:00
+#SBATCH --partition=ice-cpu      
+#SBATCH --output=slurm_def_base_%j.out
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=sgirase3@gatech.edu
+
+cd ~/scratch/v2/soccer-twos-starter
+
+module purge
+module load anaconda3/2023.03
+source activate soccertwos
+
+# Disable the Ray Dashboard to prevent socket/DNS errors on isolated PACE compute nodes
+export RAY_DISABLE_DASHBOARD=1
+
+# Create a clean timestamp (e.g., Apr24_0930) for the folder name
+TIMESTAMP=$(date +"%b%d_%H%M")
+
+echo "Starting Defensive Baseline Training..."
+python train_final_agent.py \
+    --strategy defensive \
+    --workers 11 \
+    --iters 3750 \
+    --name "Defensive_Baseline_${TIMESTAMP}"
