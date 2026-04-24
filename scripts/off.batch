@@ -21,13 +21,6 @@ export RAY_DISABLE_DASHBOARD=1
 # Create a clean timestamp (e.g., Apr24_0930) for the folder name
 TIMESTAMP=$(date +"%b%d_%H%M")
 
-# PACE CLUSTER FIX: Clean up zombie Unity environments from previous crashed runs 
-# that are hogging networking ports on this node.
-echo "Cleaning up any lingering Unity environments..."
-pkill -u $USER -f "Unity" || true
-pkill -u $USER -f "soccer_twos" || true
-sleep 2 # Give OS a moment to free up the sockets
-
 echo "Starting Offensive Baseline Training..."
 python train_final_agent.py \
     --strategy offensive \
