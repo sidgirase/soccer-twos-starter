@@ -32,7 +32,7 @@ class RLLibWrapper(gym.core.Wrapper, MultiAgentEnv):
 
                 # comprehensive strategy encouraging agents to get close to the ball and to score as quickly as possible
                 distance_to_ball = np.sqrt(ball_relative_position_x**2 + ball_relative_position_y**2) # Euclidean distance
-                new_reward -= 0.001 * min(distance_to_ball, 1.0))
+                new_reward -= 0.001 * min(distance_to_ball, 1.0)
                 new_reward -= 0.001 # encourage agent to score as quickly as possible (minimize time)
 
             new_rewards[agent_id] = new_reward
