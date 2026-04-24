@@ -18,6 +18,13 @@ source activate soccertwos
 export RAY_DISABLE_DASHBOARD=1
 TIMESTAMP=$(date +"%b%d_%H%M")
 
+# PACE CLUSTER FIX: Clean up zombie Unity environments from previous crashed runs 
+# that are hogging networking ports on this node.
+echo "Cleaning up any lingering Unity environments..."
+pkill -u $USER -f "Unity" || true
+pkill -u $USER -f "soccer_twos" || true
+sleep 2 # Give OS a moment to free up the sockets
+
 # Lower learning rate and stricter clipping. 
 # Defense is a delicate task (blocking without own-goaling). This setup makes the 
 # agent learn slightly slower but prevents it from "forgetting" good defensive habits.

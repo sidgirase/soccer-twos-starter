@@ -21,6 +21,14 @@ export RAY_DISABLE_DASHBOARD=1
 # Create a clean timestamp (e.g., Apr24_0930) for the folder name
 TIMESTAMP=$(date +"%b%d_%H%M")
 
+# PACE CLUSTER FIX: Clean up zombie Unity environments from previous crashed runs 
+# that are hogging networking ports on this node.
+echo "Cleaning up any lingering Unity environments..."
+pkill -u $USER -f "Unity" || true
+pkill -u $USER -f "soccer_twos" || true
+sleep 2 # Give OS a moment to free up the sockets
+
+
 # High Entropy (0.05 instead of 0.01) forces the agent to aggressively try 
 # random turning/kicking combos to break out of "running straight" local minimums.
 echo "Starting Offensive High Entropy Training..."

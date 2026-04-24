@@ -1,5 +1,7 @@
 import os
 import argparse
+import random
+import time
 
 # ------------------------------------------------------------------
 # Disable Ray's memory monitor to prevent psutil.AccessDenied errors 
@@ -35,17 +37,37 @@ parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
 args = parser.parse_args()
 
 def env_creator(env_config):
-    """Creates the environment with a unique worker_id to avoid port collisions."""
-    # Use a high base (1000) + the Ray worker index + a random shift from the PID
-    base_offset = 1000 + (os.getpid() % 100)
-    worker_id = getattr(env_config, "worker_index", 0) + base_offset
+    """Creates the environment with a robust retry loop to avoid PACE port collisions."""
+    worker_index = getattr(env_config, "worker_index", 0)
     
-    env = soccer_twos.make(
-        render=env_config.get("render", False),
-        time_scale=env_config.get("time_scale", 50),
-        worker_id=worker_id
-    )
-    return ShapedSoccerTwos(env, strategy=env_config.get("strategy", args.strategy))
+    # Try up to 20 times to find a free port
+    for attempt in range(20):
+        try:
+            # Unity uses base_port (usually 5005) + worker_id.
+            # Pick a highly random worker_id between 10000 and 50000 to avoid conflicts entirely.
+            worker_id = random.randint(10000, 50000) + worker_index
+            
+            env = soccer_twos.make(
+                render=env_config.get("render", False),
+                time_scale=env_config.get("time_scale", 50),
+                worker_id=worker_id
+            )
+            return ShapedSoccerTwos(env, strategy=env_config.get("strategy", args.strategy))
+            
+        except Exception as e:
+            error_msg = str(e).lower()
+            # If the specific port is taken by a zombie or another user's job on this node
+            if "in use" in error_msg or "address already in use" in error_msg:
+                print(f"[Attempt {attempt+1}/20] Worker {worker_index} port collision (worker_id={worker_id}). Retrying...")
+                # Sleep briefly with random jitter so multiple workers don't try to grab ports at the exact same millisecond
+                time.sleep(random.uniform(0.5, 2.0)) 
+                continue
+            else:
+                # If it's a completely different error, raise it immediately
+                raise e
+                
+    # If we exit the loop, it means we failed 20 times in a row
+    raise RuntimeError(f"Failed to find an open port for Unity environment after 20 attempts for worker {worker_index}.")
 
 if __name__ == "__main__":
     ray.init(ignore_reinit_error=True)
