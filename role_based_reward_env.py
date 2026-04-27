@@ -3,8 +3,8 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 class RoleBasedSoccerTwos(MultiAgentEnv):
     """
-    Splits agents into specific roles (Attacker vs Defender) with 
-    highly constrained, hack-proof reward shaping.
+    A streamlined, hack-proof MARL environment that uses continuous 
+    physics gradients and possession tracking instead of brittle heuristics.
     """
     def __init__(self, env):
         super().__init__()
@@ -12,115 +12,70 @@ class RoleBasedSoccerTwos(MultiAgentEnv):
         self.action_space = self.env.action_space
         self.observation_space = self.env.observation_space
         
-        self.team_0_score = 0
-        self.team_1_score = 0
+        # Track who touched the ball last to give the "one-time" contact reward
+        self.last_touch_agent = None
 
     def reset(self):
-        self.team_0_score = 0
-        self.team_1_score = 0
+        # Reset the touch tracker at the start of a new episode
+        self.last_touch_agent = None
         return self.env.reset()
 
     def step(self, action_dict):
         obs, rewards, dones, infos = self.env.step(action_dict)
         shaped_rewards = {}
 
-        # --- SCOREBOARD TRACKING ---
-        if 0 in rewards:
-            if rewards[0] > 0.5:
-                self.team_0_score += 1
-            elif rewards[0] < -0.5:
-                self.team_1_score += 1
-
         for agent_id, base_reward in rewards.items():
+            # RULE 4 & 5: Huge reward for scoring (+1.0) and penalty for conceding (-1.0)
+            # The base Unity environment natively provides exactly these values!
             r = base_reward
             
             if not dones.get("__all__", False) and agent_id in infos:
                 agent_info = infos[agent_id]
                 
                 if 'player_info' in agent_info and 'ball_info' in agent_info:
-                    player_pos = agent_info['player_info']['position']
-                    player_vel = agent_info['player_info']['velocity']
-                    ball_pos = agent_info['ball_info']['position']
-                    ball_vel = agent_info['ball_info']['velocity']
+                    player_pos = np.array(agent_info['player_info']['position'])
+                    ball_pos = np.array(agent_info['ball_info']['position'])
                     
-                    # Distances and Vectors
-                    ball_rel_x = ball_pos[0] - player_pos[0]
-                    ball_rel_y = ball_pos[1] - player_pos[1]
-                    ball_dist = np.sqrt(ball_rel_x**2 + ball_rel_y**2)
+                    # Exact distance from the agent to the ball
+                    ball_dist = np.linalg.norm(ball_pos - player_pos)
                     
-                    # Determine Team and Attack Direction
-                    # Unity Soccer: Index 1 (Y/Z axis) is the goal-to-goal axis.
-                    # Team 0 (Blue) attacks positive (+1). Team 1 (Orange) attacks negative (-1).
+                    # Determine Attack Direction (+1 for Blue, -1 for Orange)
                     is_team_0 = agent_id in [0, 1]
                     attack_dir = 1.0 if is_team_0 else -1.0
                     
-                    # --- SCALED SCOREBOARD PENALTY ---
-                    # Calculate the goal differential for this specific agent's team
-                    if is_team_0:
-                        score_diff = self.team_0_score - self.team_1_score
+                    # =======================================================
+                    # RULE 1: Ball distance to enemy goal (Curved Pull)
+                    # =======================================================
+                    # We define the enemy goal at X=0 (Center), Y=14.0 (End of field)
+                    # This Euclidean math creates a curve that penalizes being on the sidelines!
+                    enemy_goal_pos = np.array([0.0, 14.0 * attack_dir])
+                    ball_to_goal_dist = np.linalg.norm(enemy_goal_pos - ball_pos)
+                    
+                    # Reward increases linearly the closer the ball gets to the goal center
+                    # (30.0 is roughly the max diagonal distance of the field)
+                    r += 0.0002 * (30.0 - ball_to_goal_dist)
+                    
+                    # =======================================================
+                    # RULE 2: One-time positive reward for making contact
+                    # =======================================================
+                    # If the agent is touching the ball, and wasn't the last one to touch it
+                    if ball_dist < 1.5: # 1.5 is a safe hit radius in Unity
+                        if self.last_touch_agent != agent_id:
+                            r += 0.1  # Big one-time burst for gaining possession!
+                            self.last_touch_agent = agent_id
+                            
+                    # =======================================================
+                    # RULE 3: Reward for being BEHIND the ball
+                    # =======================================================
+                    # Player is strictly behind if their forward-axis is less advanced than the ball's
+                    is_behind_ball = (player_pos[1] * attack_dir) < (ball_pos[1] * attack_dir)
+                    
+                    if is_behind_ball:
+                        # STRONG linear gradient pulling the agent toward the ball
+                        r += 0.0005 * (30.0 - ball_dist)
                     else:
-                        score_diff = self.team_1_score - self.team_0_score
-                        
-                    if score_diff < 0:
-                        # Losing: Heavy penalty (Panic Mode)
-                        r -= 0.001 
-                    elif score_diff == 0:
-                        # Tied: Medium penalty (Urgency to break the tie)
-                        r -= 0.0005 
-                    else:
-                        # Winning: Tiny penalty (Keep pressure, but no panic)
-                        r -= 0.00005 
-
-                    # ==========================================
-                    # ROLE 1: ATTACKER (Agents 0 and 2)
-                    # ==========================================
-                    if agent_id in [0, 2]:
-                        # 1. Very near the ball
-                        if ball_dist < 1.0:
-                            r += 0.0005 * (1.0 - ball_dist)
-                            
-                            # 2. Positioned strictly behind the ball (pushing it forward)
-                            # E.g., if attacking +Y, player's Y must be less than ball's Y
-                            if player_pos[1] * attack_dir < ball_pos[1] * attack_dir:
-                                r += 0.0005
-                                
-                        # 3. Ball moving aggressively toward enemy goal
-                        # Prevents reward hacking: only rewards if ball is moving fast!
-                        forward_ball_vel = ball_vel[1] * attack_dir
-                        if ball_dist < 2.0 and forward_ball_vel > 2.0:
-                            r += 0.001
-
-                    # ==========================================
-                    # ROLE 2: DEFENDER / GOALKEEPER (Agents 1 and 3)
-                    # ==========================================
-                    elif agent_id in [1, 3]:
-                        in_own_half = (ball_pos[1] * attack_dir < 0)
-                        
-                        # 1. Contact with ball near own goal
-                        if ball_dist < 1.0 and in_own_half:
-                            r += 0.0005 * (1.0 - ball_dist)
-                            
-                        # 2. Clearance: Ball moving AWAY from own goal
-                        forward_ball_vel = ball_vel[1] * attack_dir
-                        if ball_dist < 2.5 and forward_ball_vel > 2.0 and in_own_half:
-                            r += 0.002 # Huge reward for successful clearance
-                            
-                        # 3. Passing to Attacker
-                        # Find teammate attacker (0 if I am 1, 2 if I am 3)
-                        attacker_id = 0 if agent_id == 1 else 2
-                        if attacker_id in infos and ball_dist < 2.0 and forward_ball_vel > 1.0:
-                            att_pos = infos[attacker_id]['player_info']['position']
-                            vec_to_att = np.array(att_pos) - np.array(player_pos)
-                            dist_to_att = np.linalg.norm(vec_to_att)
-                            if dist_to_att > 0.1:
-                                dir_to_att = vec_to_att / dist_to_att
-                                pass_accuracy = np.dot(ball_vel, dir_to_att)
-                                if pass_accuracy > 3.0: # Ball moving fast & accurately toward attacker
-                                    r += 0.002
-                        
-                        # ANTI-HACK: Penalty if the defender leaves their own half!
-                        if player_pos[1] * attack_dir > 2.0:
-                            r -= 0.0005
+                        # Penalty for being in front of the ball (forces them to run back around it)
+                        r -= 0.0005
 
             shaped_rewards[agent_id] = r
 
