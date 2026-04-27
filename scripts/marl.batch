@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --job-name=soc_marl
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=40        
+#SBATCH --mem=40G               
+#SBATCH --time=12:00:00
+#SBATCH --partition=coc-gpu      
+#SBATCH --output=slurm_roles_%j.out
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=sgirase3@gatech.edu
+
+cd ~/scratch/v2/soccer-twos-starter
+
+module purge
+module load anaconda3/2023.03
+source activate soccertwos
+
+export RAY_DISABLE_DASHBOARD=1
+export RAY_metrics_export_port=0
+export RAY_IGNORE_UNHANDLED_ERRORS=1
+
+TIMESTAMP=$(date +"%b%d_%H%M")
+
+echo "Starting 2-Brain Role Based Training..."
+
+# Added -u flag to force real-time logging to the SLURM .out file!
+# Using 38 workers to leave 2 CPU cores free for the Ray Driver.
+python -u train_marl.py \
+    --workers 40 \
+    --iters 5000 \
+    --name "Role_Based_Team_${TIMESTAMP}"
