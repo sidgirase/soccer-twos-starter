@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=soc_off_base
+#SBATCH --job-name=soc_off_exp
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=12        
-#SBATCH --mem=16G               
+#SBATCH --cpus-per-task=22        
+#SBATCH --mem=32G               
 #SBATCH --time=12:00:00
-#SBATCH --partition=ice-cpu      
-#SBATCH --output=slurm_off_base_%j.out
+#SBATCH --partition=coc-gpu      
+#SBATCH --output=slurm_off_exp_%j.out
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=sgirase3@gatech.edu
 
@@ -21,10 +21,12 @@ export RAY_DISABLE_DASHBOARD=1
 # Create a clean timestamp (e.g., Apr24_0930) for the folder name
 TIMESTAMP=$(date +"%b%d_%H%M")
 
-echo "Starting Offensive Baseline Training..."
+# High Entropy (0.05 instead of 0.01) forces the agent to aggressively try 
+# random turning/kicking combos to break out of "running straight" local minimums.
+echo "Starting Offensive High Entropy Training..."
 python train_final_agent.py \
     --strategy offensive \
-    --workers 40 \
+    --workers 22 \
     --iters 3750 \
-    --name "Offensive_Baseline_${TIMESTAMP} \
-    --restore "/home/hice1/sgirase3/scratch/v2/soccer-twos-starter/ray_results/Offensive_Baseline_Apr24_1318/PPO_ShapedSoccer_b2163_00000_0_2026-04-24_13-19-05/checkpoint_000950/checkpoint-950"
+    --entropy 0.05 \
+    --name "Offensive_High_Entropy_${TIMESTAMP}"
