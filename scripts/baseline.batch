@@ -1,0 +1,28 @@
+#!/bin/bash
+#SBATCH --job-name=soc_base
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=40        
+#SBATCH --mem=40G               
+#SBATCH --time=12:00:00
+#SBATCH --partition=coc-cpu      
+#SBATCH --output=slurm_roles_%j.out
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=sgirase3@gatech.edu
+
+cd ~/scratch/v2/soccer-twos-starter
+
+module purge
+module load anaconda3/2023.03
+source activate soccertwos
+
+export RAY_DISABLE_DASHBOARD=1
+export RAY_metrics_export_port=0
+export RAY_IGNORE_UNHANDLED_ERRORS=1
+
+TIMESTAMP=$(date +"%b%d_%H%M")
+
+echo "Starting Conventional Baseline Training..."
+python -u train_baseline.py \
+    --workers 10 \
+    --iters 3750 \
+    --name "Conventional_Baseline_${TIMESTAMP}"
