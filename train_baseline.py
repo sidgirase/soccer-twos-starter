@@ -28,9 +28,13 @@ args = parser.parse_args()
 
 def env_creator(env_config):
     worker_index = getattr(env_config, "worker_index", 0)
+    # Use a high base + the Ray worker index + a random shift from the PID
+    base_offset = 1000 + (os.getpid() % 1000)
+    
     for attempt in range(30):
         try:
-            worker_id = random.randint(10000, 20000) + worker_index
+            # Keep worker_id relatively small to prevent OverflowError (port > 65535)
+            worker_id = random.randint(100, 5000) + worker_index + base_offset
             env = soccer_twos.make(render=False, time_scale=50, worker_id=worker_id)
             return BaselineSoccerTwos(env)
         except Exception as e:
