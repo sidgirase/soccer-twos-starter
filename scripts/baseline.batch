@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=40        
 #SBATCH --mem=40G               
 #SBATCH --time=12:00:00
-#SBATCH --partition=coc-cpu      
+#SBATCH --partition=coc-gpu      
 #SBATCH --output=slurm_roles_%j.out
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=sgirase3@gatech.edu
@@ -23,6 +23,6 @@ TIMESTAMP=$(date +"%b%d_%H%M")
 
 echo "Starting Conventional Baseline Training..."
 python -u train_baseline.py \
-    --workers 10 \
+    --workers 40 \
     --iters 3750 \
     --name "Conventional_Baseline_${TIMESTAMP}"
