@@ -19,7 +19,7 @@ from ray.rllib.agents.ppo import PPOTrainer
 import soccer_twos
 
 # Import our new multi-agent role-based wrapper!
-from roles_reward_env import RoleBasedSoccerTwos
+from role_based_reward_env import RoleBasedSoccerTwos
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--workers", type=int, default=10)
