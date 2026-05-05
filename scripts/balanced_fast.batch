@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=soc_bal_fst
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=12        
-#SBATCH --mem=16G               
+#SBATCH --cpus-per-task=22        
+#SBATCH --mem=32G               
 #SBATCH --time=12:00:00
-#SBATCH --partition=ice-cpu      
+#SBATCH --partition=coc-gpu      
 #SBATCH --output=slurm_bal_fst_%j.out
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=sgirase3@gatech.edu
@@ -23,7 +23,7 @@ TIMESTAMP=$(date +"%b%d_%H%M")
 echo "Starting Balanced Fast Learner Training..."
 python train_final_agent.py \
     --strategy balanced \
-    --workers 32 \
+    --workers 22 \
     --iters 3750 \
     --lr 5e-4 \
     --clip 0.1 \

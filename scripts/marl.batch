@@ -28,4 +28,4 @@ echo "Starting 2-Brain Role Based Training..."
 python -u train_marl.py \
     --workers 40 \
     --iters 5000 \
-    --name "Role_Based_Team_${TIMESTAMP}"
+    --name "OneLastTime_${TIMESTAMP}"

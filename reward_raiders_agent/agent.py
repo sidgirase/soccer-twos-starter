@@ -1,23 +1,32 @@
 import os
+import gym
+import numpy as np
+
+os.environ["RAY_DISABLE_MEMORY_MONITOR"] = "1"
+os.environ["RAY_IGNORE_UNHANDLED_ERRORS"] = "1"
+os.environ["RAY_DISABLE_METRICS_COLLECTION"] = "1"
+os.environ["RAY_DISABLE_REPORTER"] = "1"
+os.environ["RAY_DISABLE_DASHBOARD"] = "1"
+os.environ["RAY_NODE_IP_ADDRESS"] = "127.0.0.1"
+
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
 from soccer_twos import AgentInterface
 from ray.tune.registry import register_env
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
-# We create a minimal wrapper to satisfy RLlib's MultiAgentEnv requirement
-class RLLibWrapper(MultiAgentEnv):
-    def __init__(self, env):
+# We create a fake environment to trick RLlib. 
+class DummyEnv(MultiAgentEnv):
+    def __init__(self, config=None):
         super().__init__()
-        self.env = env
-        self.action_space = env.action_space
-        self.observation_space = env.observation_space
+        self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(336,), dtype=np.float32)
+        self.action_space = gym.spaces.MultiDiscrete([3, 3, 3])
 
     def reset(self):
-        return self.env.reset()
+        return {0: self.observation_space.sample()}
 
     def step(self, action_dict):
-        return self.env.step(action_dict)
+        return {0: self.observation_space.sample()}, {0: 0}, {0: False, "__all__": False}, {}
 
 class RewardRaidersAgent(AgentInterface):
     """
@@ -28,31 +37,25 @@ class RewardRaidersAgent(AgentInterface):
         super().__init__()
         self.name = "Reward Raiders"
         
-        # We need Ray to load the RLLib model, but we don't want it to spin up a full cluster
         if not ray.is_initialized():
-            ray.init(ignore_reinit_error=True, log_to_driver=False)
+            ray.init(ignore_reinit_error=True, log_to_driver=False, local_mode=True)
 
-        # 1. Update this path to point to your best checkpoint folder!
-        # Example: "../ray_results/PPO_Soccer_Final_balanced/.../checkpoint_000500/checkpoint-500"
         checkpoint_path = os.path.join(
             os.path.dirname(__file__), 
-            "..\\ray_results\\PPO_ShapedSoccer_3594d_00000_0_2026-04-23_20-11-58\\checkpoint_000250\\checkpoint-250" 
+            "checkpoint_001200", 
+            "checkpoint-1200"
         )
 
-        import soccer_twos
+        # Register the fake environment
+        register_env("DummyEnv", lambda config: DummyEnv(config))
         
-        # Register the environment WITH our wrapper so RLlib accepts it
-        register_env("soccer_twos", lambda config: RLLibWrapper(soccer_twos.make(**config)))
-        
-        # Extract spaces
-        dummy_env = soccer_twos.make(render=False, worker_id=98)
-        obs_space = dummy_env.observation_space
-        act_space = dummy_env.action_space
-        dummy_env.close()
+        # Hardcode spaces so we don't have to launch Unity to read them
+        obs_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(336,), dtype=np.float32)
+        act_space = gym.spaces.MultiDiscrete([3, 3, 3])
 
-        # 2. Minimal config to restore the trainer
+        # 2. Minimal config to restore the trainer using the DummyEnv
         config = {
-            "env": "soccer_twos",
+            "env": "DummyEnv",
             "framework": "torch",
             "num_workers": 0,
             "explore": False, # Turn off exploration during evaluation
@@ -63,7 +66,7 @@ class RewardRaidersAgent(AgentInterface):
         }
 
         # 3. Load the model
-        self.trainer = PPOTrainer(config=config, env="soccer_twos")
+        self.trainer = PPOTrainer(config=config, env="DummyEnv")
         try:
             self.trainer.restore(checkpoint_path)
             # Extract the specific policy so we can query it directly
