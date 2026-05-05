@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --job-name=soc_bal_fst
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=22        
+#SBATCH --mem=32G               
+#SBATCH --time=12:00:00
+#SBATCH --partition=coc-gpu      
+#SBATCH --output=slurm_bal_fst_%j.out
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=sgirase3@gatech.edu
+
+cd ~/scratch/v2/soccer-twos-starter
+
+module purge
+module load anaconda3/2023.03
+source activate soccertwos
+
+export RAY_DISABLE_DASHBOARD=1
+TIMESTAMP=$(date +"%b%d_%H%M")
+
+# High learning rate but strict clipping so it learns quickly 
+# without accidentally destroying the policy weights.
+echo "Starting Balanced Fast Learner Training..."
+python train_final_agent.py \
+    --strategy balanced \
+    --workers 22 \
+    --iters 3750 \
+    --lr 5e-4 \
+    --clip 0.1 \
+    --name "Balanced_Fast_Learner_${TIMESTAMP}" \
+    --restore "/home/hice1/sgirase3/scratch/v2/soccer-twos-starter/ray_results/Balanced_Fast_Learner_Apr24_2210/PPO_ShapedSoccer_18855_00000_0_2026-04-24_22-11-40/checkpoint_001700/checkpoint-1700"

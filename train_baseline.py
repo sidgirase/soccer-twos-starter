@@ -1,0 +1,88 @@
+import os
+import argparse
+import random
+import time
+
+os.environ["RAY_DISABLE_MEMORY_MONITOR"] = "1"
+os.environ["RAY_IGNORE_UNHANDLED_ERRORS"] = "1"
+os.environ["RAY_DISABLE_METRICS_COLLECTION"] = "1"
+os.environ["RAY_DISABLE_REPORTER"] = "1"
+os.environ["RAY_DISABLE_DASHBOARD"] = "1"
+
+import gym
+import numpy as np
+import ray
+from ray import tune
+from ray.tune.registry import register_env
+from ray.rllib.agents.ppo import PPOTrainer
+import soccer_twos
+
+# Import the reliable baseline environment
+from baseline_reward_env import BaselineSoccerTwos
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--workers", type=int, default=10)
+parser.add_argument("--iters", type=int, default=3750)
+parser.add_argument("--name", type=str, default="Baseline_Conventional_Run")
+args = parser.parse_args()
+
+def env_creator(env_config):
+    worker_index = getattr(env_config, "worker_index", 0)
+    # Use a high base + the Ray worker index + a random shift from the PID
+    base_offset = 1000 + (os.getpid() % 1000)
+    
+    for attempt in range(30):
+        try:
+            # Keep worker_id relatively small to prevent OverflowError (port > 65535)
+            worker_id = random.randint(100, 5000) + worker_index + base_offset
+            env = soccer_twos.make(render=False, time_scale=50, worker_id=worker_id)
+            return BaselineSoccerTwos(env)
+        except Exception as e:
+            if "in use" in str(e).lower():
+                time.sleep(random.uniform(0.5, 2.0)) 
+                continue
+            raise e
+    raise RuntimeError("Failed to find open port.")
+
+if __name__ == "__main__":
+    ray.init(ignore_reinit_error=True)
+    register_env("BaselineSoccer", env_creator)
+
+    obs_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(336,), dtype=np.float32)
+    act_space = gym.spaces.MultiDiscrete([3, 3, 3])
+
+    config = {
+        "env": "BaselineSoccer",
+        "env_config": {},
+        "framework": "torch",
+        "num_workers": args.workers,
+        "num_envs_per_worker": 1,
+        "num_gpus": 0, 
+        
+        # Standard Shared Policy - Safest bet for MARL convergence
+        "multiagent": {
+            "policies": {"shared_policy": (None, obs_space, act_space, {})},
+            "policy_mapping_fn": lambda agent_id, *args, **kwargs: "shared_policy",
+        },
+        
+        "model": {"fcnet_hiddens": [256, 256], "fcnet_activation": "relu"},
+        "lr": 3e-4,
+        "train_batch_size": 4000,
+        "sgd_minibatch_size": 128,
+        "num_sgd_iter": 10,
+        "entropy_coeff": 0.01, 
+        "clip_param": 0.2, 
+        "vf_loss_coeff": 1.0, 
+    }
+
+    print(f"Starting Conventional Baseline Training: {args.name}")
+
+    tune.run(
+        "PPO",
+        name=args.name,
+        stop={"training_iteration": args.iters},
+        checkpoint_freq=50,
+        checkpoint_at_end=True,
+        local_dir="./ray_results",
+        config=config,
+    )
